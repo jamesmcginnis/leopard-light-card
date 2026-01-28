@@ -153,7 +153,7 @@ class LeopardLightCard extends HTMLElement {
   }
 }
 
-/* ---------- EDITOR WITH DROP-DOWN FIX ---------- */
+/* ---------- EDITOR WITH FORCED FOCUS & DROP-DOWN FIX ---------- */
 class LeopardLightCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = config;
@@ -199,12 +199,18 @@ class LeopardLightCardEditor extends HTMLElement {
 
     this.addEventListener("value-changed", this._valueChanged.bind(this));
 
-    // THE DROP-DOWN FIX: Catch clicks before they bubble to the HA Dialog
+    // THE FIX: Catch clicks and forced focus before they bubble to the HA Dialog
     const pickers = this.querySelectorAll("ha-entity-picker, ha-icon-picker");
     pickers.forEach(picker => {
+      // Intercept pointer events that trigger dialog closure
       picker.addEventListener("click", (ev) => ev.stopPropagation(), { capture: true });
       picker.addEventListener("mousedown", (ev) => ev.stopPropagation(), { capture: true });
       picker.addEventListener("pointerdown", (ev) => ev.stopPropagation(), { capture: true });
+
+      // Forced interaction handler to prevent the box from disappearing
+      picker.addEventListener("focus", (ev) => {
+        ev.stopPropagation();
+      }, { capture: true });
     });
   }
 
