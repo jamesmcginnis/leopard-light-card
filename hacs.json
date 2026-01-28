@@ -1,0 +1,7 @@
+{
+  "name": "Leopard HomeKit Light Card",
+  "render_readme": true,
+  "type": "plugin",
+  "authors": ["@jamesmcginnis"],
+  "content_type": "js"
+}
