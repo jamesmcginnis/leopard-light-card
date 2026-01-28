@@ -22,7 +22,6 @@ class LeopardLightCard extends HTMLElement {
     if (!this._isDragging) this.render();
   }
 
-  /* ---------- ACTIONS ---------- */
   _setBrightness(value) {
     this._hass.callService('light', 'turn_on', {
       entity_id: this._config.entity,
@@ -34,7 +33,6 @@ class LeopardLightCard extends HTMLElement {
     this._hass.callService('light', 'toggle', { entity_id: this._config.entity });
   }
 
-  /* ---------- UTILS ---------- */
   _getLightColor(state) {
     if (state.attributes.rgb_color) return `rgb(${state.attributes.rgb_color.join(',')})`;
     return '#F7D959';
@@ -47,7 +45,6 @@ class LeopardLightCard extends HTMLElement {
     return luminance < 0.6;
   }
 
-  /* ---------- DRAG HANDLERS ---------- */
   _handleDragStart(e) {
     this._isDragging = true;
     this._hasMoved = false;
@@ -90,7 +87,6 @@ class LeopardLightCard extends HTMLElement {
     this.render();
   }
 
-  /* ---------- CARD RENDER ---------- */
   render() {
     if (!this._hass || !this._config) return;
     const state = this._hass.states[this._config.entity];
@@ -153,8 +149,13 @@ class LeopardLightCard extends HTMLElement {
   }
 }
 
-/* ---------- EDITOR WITH FORCED FOCUS & DROP-DOWN FIX ---------- */
+/* ---------- FINAL EDITOR FIX WITH "SELECT LIGHT" TEXT ---------- */
 class LeopardLightCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
   setConfig(config) {
     this._config = config;
   }
@@ -167,74 +168,91 @@ class LeopardLightCardEditor extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
 
-    this.innerHTML = `
-      <div class="card-config" style="padding: 16px; display: flex; flex-direction: column; gap: 20px;">
-        <ha-entity-picker
-          .label="${"Light Entity"}"
-          .hass="${this._hass}"
-          .value="${this._config.entity}"
-          .configValue="${"entity"}"
-          .includeDomains="${["light"]}"
-          allow-custom-entity
-        ></ha-entity-picker>
-        
-        <ha-icon-picker
-          .label="${"Icon"}"
-          .hass="${this._hass}"
-          .value="${this._config.icon}"
-          .configValue="${"icon"}"
-        ></ha-icon-picker>
-
-        <div>
-          <p style="margin-bottom: 8px; font-family: sans-serif;">Card Size Multiplier: ${this._config.size || 1}</p>
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          display: block;
+          padding: 16px;
+          --mdc-menu-z-index: 9999;
+        }
+        .container {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          min-height: 300px; /* Ensures space for dropdowns */
+        }
+        .item {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .title-text {
+          font-family: var(--paper-font-body1_-_font-family);
+          font-size: 16px;
+          font-weight: bold;
+          color: var(--primary-text-color);
+          margin-bottom: 2px;
+        }
+        label {
+          font-family: var(--paper-font-body1_-_font-family);
+          font-size: 14px;
+          color: var(--secondary-text-color);
+        }
+      </style>
+      <div class="container">
+        <div class="item">
+          <div class="title-text">Select Light</div>
+          <ha-entity-picker
+            .hass="${this._hass}"
+            .value="${this._config.entity}"
+            .configValue="${'entity'}"
+            .includeDomains="${['light']}"
+            allow-custom-entity
+          ></ha-entity-picker>
+        </div>
+        <div class="item">
+          <label>Icon Override</label>
+          <ha-icon-picker
+            .hass="${this._hass}"
+            .value="${this._config.icon}"
+            .configValue="${'icon'}"
+          ></ha-icon-picker>
+        </div>
+        <div class="item">
+          <label>Card Size: ${this._config.size || 1}x</label>
           <ha-slider
-            .value="${this._config.size || 1}"
-            .configValue="${"size"}"
             min="1" max="4" step="1" pin
-            style="width: 100%;"
+            .value="${this._config.size || 1}"
+            .configValue="${'size'}"
           ></ha-slider>
         </div>
       </div>
     `;
 
-    this.addEventListener("value-changed", this._valueChanged.bind(this));
+    this.shadowRoot.querySelectorAll("ha-entity-picker, ha-icon-picker, ha-slider").forEach(el => {
+      // STOP PROPAGATION - Crucial for preventing HA from closing the dropdown
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      el.addEventListener("mousedown", (ev) => ev.stopPropagation());
+      
+      el.addEventListener("value-changed", (ev) => {
+        const configValue = ev.target.configValue;
+        const value = ev.detail.value;
 
-    // THE FIX: Catch clicks and forced focus before they bubble to the HA Dialog
-    const pickers = this.querySelectorAll("ha-entity-picker, ha-icon-picker");
-    pickers.forEach(picker => {
-      // Intercept pointer events that trigger dialog closure
-      picker.addEventListener("click", (ev) => ev.stopPropagation(), { capture: true });
-      picker.addEventListener("mousedown", (ev) => ev.stopPropagation(), { capture: true });
-      picker.addEventListener("pointerdown", (ev) => ev.stopPropagation(), { capture: true });
+        const newConfig = {
+          ...this._config,
+          [configValue]: configValue === 'size' ? Number(value) : value
+        };
 
-      // Forced interaction handler to prevent the box from disappearing
-      picker.addEventListener("focus", (ev) => {
-        ev.stopPropagation();
-      }, { capture: true });
+        this.dispatchEvent(new CustomEvent("config-changed", {
+          detail: { config: newConfig },
+          bubbles: true,
+          composed: true
+        }));
+      });
     });
-  }
-
-  _valueChanged(ev) {
-    if (!this._config || !this._hass) return;
-    const target = ev.target;
-    const value = ev.detail.value;
-
-    if (this._config[target.configValue] === value) return;
-
-    const newConfig = {
-      ...this._config,
-      [target.configValue]: target.configValue === "size" ? Number(value) : value,
-    };
-
-    this.dispatchEvent(new CustomEvent("config-changed", {
-      detail: { config: newConfig },
-      bubbles: true,
-      composed: true,
-    }));
   }
 }
 
-// REGISTRATION
 customElements.define('leopard-light-card', LeopardLightCard);
 customElements.define('leopard-light-card-editor', LeopardLightCardEditor);
 
