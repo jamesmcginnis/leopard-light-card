@@ -22,6 +22,7 @@ class LeopardLightCard extends HTMLElement {
     if (!this._isDragging) this.render();
   }
 
+  /* ---------- ACTIONS ---------- */
   _setBrightness(value) {
     this._hass.callService('light', 'turn_on', {
       entity_id: this._config.entity,
@@ -33,6 +34,7 @@ class LeopardLightCard extends HTMLElement {
     this._hass.callService('light', 'toggle', { entity_id: this._config.entity });
   }
 
+  /* ---------- UTILS ---------- */
   _getLightColor(state) {
     if (state.attributes.rgb_color) return `rgb(${state.attributes.rgb_color.join(',')})`;
     return '#F7D959';
@@ -45,14 +47,17 @@ class LeopardLightCard extends HTMLElement {
     return luminance < 0.6;
   }
 
+  /* ---------- DRAG HANDLERS ---------- */
   _handleDragStart(e) {
     this._isDragging = true;
     this._hasMoved = false;
     const rect = this.shadowRoot.getElementById('card').getBoundingClientRect();
     this._cardLeft = rect.left;
     this._cardWidth = rect.width;
+
     this._onMove = (ev) => this._handleDragMove(ev);
     this._onEnd = () => this._handleDragEnd();
+
     window.addEventListener('mousemove', this._onMove);
     window.addEventListener('mouseup', this._onEnd);
     window.addEventListener('touchmove', this._onMove, { passive: false });
@@ -64,10 +69,12 @@ class LeopardLightCard extends HTMLElement {
     const x = e.touches ? e.touches[0].clientX : e.clientX;
     const position = Math.max(0, Math.min(1, (x - this._cardLeft) / this._cardWidth));
     this._currentBrightness = position * 100;
+    
     const fill = this.shadowRoot.querySelector('.slider-fill');
     const status = this.shadowRoot.querySelector('.status');
     if (fill) fill.style.width = `${this._currentBrightness}%`;
     if (status) status.textContent = `${Math.round(this._currentBrightness)}%`;
+    
     this._hasMoved = true;
   }
 
@@ -75,6 +82,7 @@ class LeopardLightCard extends HTMLElement {
     if (!this._isDragging) return;
     if (this._hasMoved) this._setBrightness(this._currentBrightness);
     this._isDragging = false;
+    
     window.removeEventListener('mousemove', this._onMove);
     window.removeEventListener('mouseup', this._onEnd);
     window.removeEventListener('touchmove', this._onMove);
@@ -82,15 +90,15 @@ class LeopardLightCard extends HTMLElement {
     this.render();
   }
 
+  /* ---------- CARD RENDER ---------- */
   render() {
     if (!this._hass || !this._config) return;
     const state = this._hass.states[this._config.entity];
     
-    // If no entity is selected, show a placeholder so the card isn't invisible
     if (!state) {
       this.shadowRoot.innerHTML = `
-        <div style="background: #1c1c1e; color: white; padding: 20px; border-radius: 28px; text-align: center;">
-          Select a light entity
+        <div style="background: #1c1c1e; color: white; padding: 20px; border-radius: 28px; text-align: center; cursor: pointer;">
+          Select a light entity in editor
         </div>
       `;
       return;
@@ -145,7 +153,7 @@ class LeopardLightCard extends HTMLElement {
   }
 }
 
-/* ---------- RE-ENGINEERED EDITOR ---------- */
+/* ---------- EDITOR WITH DROP-DOWN FIX ---------- */
 class LeopardLightCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = config;
@@ -159,7 +167,6 @@ class LeopardLightCardEditor extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
 
-    // We use standard HTML here to avoid Shadow DOM depth issues with pickers
     this.innerHTML = `
       <div class="card-config" style="padding: 16px; display: flex; flex-direction: column; gap: 20px;">
         <ha-entity-picker
@@ -179,7 +186,7 @@ class LeopardLightCardEditor extends HTMLElement {
         ></ha-icon-picker>
 
         <div>
-          <p style="margin-bottom: 8px;">Card Size Multiplier: ${this._config.size || 1}</p>
+          <p style="margin-bottom: 8px; font-family: sans-serif;">Card Size Multiplier: ${this._config.size || 1}</p>
           <ha-slider
             .value="${this._config.size || 1}"
             .configValue="${"size"}"
@@ -190,8 +197,15 @@ class LeopardLightCardEditor extends HTMLElement {
       </div>
     `;
 
-    // Global listener for the editor
     this.addEventListener("value-changed", this._valueChanged.bind(this));
+
+    // THE DROP-DOWN FIX: Catch clicks before they bubble to the HA Dialog
+    const pickers = this.querySelectorAll("ha-entity-picker, ha-icon-picker");
+    pickers.forEach(picker => {
+      picker.addEventListener("click", (ev) => ev.stopPropagation(), { capture: true });
+      picker.addEventListener("mousedown", (ev) => ev.stopPropagation(), { capture: true });
+      picker.addEventListener("pointerdown", (ev) => ev.stopPropagation(), { capture: true });
+    });
   }
 
   _valueChanged(ev) {
@@ -206,20 +220,18 @@ class LeopardLightCardEditor extends HTMLElement {
       [target.configValue]: target.configValue === "size" ? Number(value) : value,
     };
 
-    const event = new CustomEvent("config-changed", {
+    this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: newConfig },
       bubbles: true,
       composed: true,
-    });
-    this.dispatchEvent(event);
+    }));
   }
 }
 
-// REGISTER BOTH
+// REGISTRATION
 customElements.define('leopard-light-card', LeopardLightCard);
 customElements.define('leopard-light-card-editor', LeopardLightCardEditor);
 
-// CRITICAL: HACS/Search Registration
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "leopard-light-card",
