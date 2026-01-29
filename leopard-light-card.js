@@ -97,18 +97,9 @@ class LeopardLightCard extends HTMLElement {
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR ===================== */
+/* ===================== EDITOR (WORKING WITH DROPDOWNS) ===================== */
 
 class LeopardLightCardEditor extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-
-    // ✅ Correct fix: stop click propagation on host only
-    // This prevents the HA dashboard from closing the dropdown
-    this.addEventListener("click", (e) => e.stopPropagation());
-  }
-
   setConfig(config) {
     this._config = config;
     this.render();
@@ -122,17 +113,12 @@ class LeopardLightCardEditor extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
 
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host {
-          display:block;
-          padding:16px;
-        }
-      </style>
+    // Render directly in LIGHT DOM (no shadowRoot)
+    this.innerHTML = `
       <ha-form></ha-form>
     `;
 
-    const form = this.shadowRoot.querySelector("ha-form");
+    const form = this.querySelector("ha-form");
 
     form.hass = this._hass;
     form.data = this._config;
@@ -153,22 +139,17 @@ class LeopardLightCardEditor extends HTMLElement {
       }
     ];
 
-    form.addEventListener("value-changed", (e) => {
-      this.dispatchEvent(
-        new CustomEvent("config-changed", {
-          detail: { config: e.detail.value },
-          bubbles: true,
-          composed: true
-        })
-      );
+    form.addEventListener("value-changed", e => {
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config: e.detail.value },
+        bubbles: true,
+        composed: true
+      }));
     });
   }
 }
 
-customElements.define(
-  "leopard-light-card-editor",
-  LeopardLightCardEditor
-);
+customElements.define("leopard-light-card-editor", LeopardLightCardEditor);
 
 /* ===================== REGISTER ===================== */
 
