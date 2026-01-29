@@ -97,22 +97,16 @@ class LeopardLightCard extends HTMLElement {
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR (FINAL, STABLE FIX) ===================== */
+/* ===================== EDITOR ===================== */
 
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
 
-    // 🔑 CRITICAL FIX:
-    // Stop HA dashboard editor from closing selector overlays
-    ["pointerdown", "mousedown", "touchstart", "click"].forEach((event) => {
-      this.shadowRoot.addEventListener(
-        event,
-        (e) => e.stopPropagation(),
-        true // capture phase — REQUIRED
-      );
-    });
+    // ✅ Correct fix: stop click propagation on host only
+    // This prevents the HA dashboard from closing the dropdown
+    this.addEventListener("click", (e) => e.stopPropagation());
   }
 
   setConfig(config) {
@@ -133,7 +127,6 @@ class LeopardLightCardEditor extends HTMLElement {
         :host {
           display:block;
           padding:16px;
-          --mdc-menu-z-index:9999;
         }
       </style>
       <ha-form></ha-form>
