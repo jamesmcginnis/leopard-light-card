@@ -14,7 +14,7 @@ class LeopardLightCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { icon: '', size: 1, ...config };
+    this._config = Object.assign({ icon: '', size: 1 }, config);
   }
 
   set hass(hass) {
@@ -23,7 +23,11 @@ class LeopardLightCard extends HTMLElement {
   }
 
   _supportsBrightness(state) {
-    return typeof state?.attributes?.brightness === 'number';
+    return (
+      state &&
+      state.attributes &&
+      typeof state.attributes.brightness === 'number'
+    );
   }
 
   _setBrightness(value) {
@@ -40,16 +44,18 @@ class LeopardLightCard extends HTMLElement {
   }
 
   _getLightColor(state) {
-    if (state.attributes.rgb_color) {
-      return `rgb(${state.attributes.rgb_color.join(',')})`;
+    if (state.attributes && state.attributes.rgb_color) {
+      return 'rgb(' + state.attributes.rgb_color.join(',') + ')';
     }
     return '#F7D959';
   }
 
   _isColorDark(color) {
-    if (!color?.includes('rgb')) return true;
+    if (!color || color.indexOf('rgb') === -1) return true;
     const rgb = color.match(/\d+/g).map(Number);
-    return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 < 0.6;
+    const luminance =
+      (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+    return luminance < 0.6;
   }
 
   _handleDragStart(e) {
@@ -75,19 +81,24 @@ class LeopardLightCard extends HTMLElement {
     if (!this._isDragging) return;
 
     const x = e.touches ? e.touches[0].clientX : e.clientX;
-    const pct = Math.max(0, Math.min(1, (x - this._cardLeft) / this._cardWidth));
-    this._currentBrightness = pct * 100;
+    const pos = Math.max(
+      0,
+      Math.min(1, (x - this._cardLeft) / this._cardWidth)
+    );
+
+    this._currentBrightness = pos * 100;
 
     const fill = this.shadowRoot.querySelector('.slider-fill');
     const status = this.shadowRoot.querySelector('.status');
-    if (fill) fill.style.width = `${this._currentBrightness}%`;
-    if (status) status.textContent = `${Math.round(this._currentBrightness)}%`;
+    if (fill) fill.style.width = this._currentBrightness + '%';
+    if (status) status.textContent = Math.round(this._currentBrightness) + '%';
 
     this._hasMoved = true;
   }
 
   _handleDragEnd() {
     if (!this._isDragging) return;
+
     if (this._hasMoved) this._setBrightness(this._currentBrightness);
     this._isDragging = false;
 
@@ -115,13 +126,19 @@ class LeopardLightCard extends HTMLElement {
 
     const supportsBrightness = this._supportsBrightness(state);
     const isOn = state.state === 'on';
-    const percent = supportsBrightness && isOn
-      ? Math.round((state.attributes.brightness / 255) * 100)
-      : 0;
+    const brightness = state.attributes.brightness || 0;
+    const percent =
+      supportsBrightness && isOn
+        ? Math.round((brightness / 255) * 100)
+        : 0;
 
     const activeColor = isOn ? this._getLightColor(state) : '#313131';
     const isDark = !isOn || this._isColorDark(activeColor);
-    const icon = this._config.icon || state.attributes.icon || 'mdi:lightbulb';
+
+    const icon =
+      this._config.icon ||
+      state.attributes.icon ||
+      'mdi:lightbulb';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -133,24 +150,37 @@ class LeopardLightCard extends HTMLElement {
         ha-icon{--mdc-icon-size:20px}
         .status{font-size:12px;opacity:.6}
       </style>
+
       <div class="slider-container" id="card">
         <div class="slider-fill"></div>
         <div class="content">
           <div class="icon-box"><ha-icon icon="${icon}"></ha-icon></div>
           <div>
             <div>${state.attributes.friendly_name}</div>
-            <div class="status">${supportsBrightness ? (isOn ? percent + '%' : 'Off') : (isOn ? 'On' : 'Off')}</div>
+            <div class="status">
+              ${
+                supportsBrightness
+                  ? isOn ? percent + '%' : 'Off'
+                  : isOn ? 'On' : 'Off'
+              }
+            </div>
           </div>
         </div>
       </div>
     `;
 
     const card = this.shadowRoot.getElementById('card');
-    card.onclick = () => { if (!this._hasMoved) this._toggleLight(); };
+    card.onclick = () => {
+      if (!this._hasMoved) this._toggleLight();
+    };
 
     if (supportsBrightness) {
-      card.addEventListener('mousedown', e => this._handleDragStart(e));
-      card.addEventListener('touchstart', e => this._handleDragStart(e), { passive:false });
+      card.addEventListener('mousedown', (e) => this._handleDragStart(e));
+      card.addEventListener(
+        'touchstart',
+        (e) => this._handleDragStart(e),
+        { passive: false }
+      );
     }
   }
 }
@@ -202,16 +232,21 @@ class LeopardLightCardEditor extends HTMLElement {
     `;
 
     this.shadowRoot.querySelectorAll('ha-entity-picker, ha-icon-picker')
-      .forEach(el => {
-        // ✅ ONLY stop mousedown
-        el.addEventListener('mousedown', e => e.stopPropagation());
+      .forEach((el) => {
+        el.addEventListener('mousedown', (e) => e.stopPropagation());
 
-        el.addEventListener('value-changed', e => {
-          this.dispatchEvent(new CustomEvent('config-changed', {
-            detail: { config: { ...this._config, [e.target.configValue]: e.detail.value } },
-            bubbles: true,
-            composed: true
-          }));
+        el.addEventListener('value-changed', (e) => {
+          this.dispatchEvent(
+            new CustomEvent('config-changed', {
+              detail: {
+                config: Object.assign({}, this._config, {
+                  [e.target.configValue]: e.detail.value
+                })
+              },
+              bubbles: true,
+              composed: true
+            })
+          );
         });
       });
   }
@@ -219,3 +254,11 @@ class LeopardLightCardEditor extends HTMLElement {
 
 customElements.define('leopard-light-card', LeopardLightCard);
 customElements.define('leopard-light-card-editor', LeopardLightCardEditor);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: 'leopard-light-card',
+  name: 'Leopard HomeKit Light',
+  description: 'A horizontal HomeKit-style pill slider for lights.',
+  preview: true
+});
