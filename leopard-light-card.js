@@ -1,6 +1,6 @@
 console.warn("LeopardLightCard loaded");
 
-/* ===================== CARD (UNCHANGED LOGIC) ===================== */
+/* ===================== CARD ===================== */
 
 class LeopardLightCard extends HTMLElement {
   constructor() {
@@ -27,7 +27,11 @@ class LeopardLightCard extends HTMLElement {
 
   render() {
     if (!this._hass || !this._config?.entity) {
-      this.shadowRoot.innerHTML = `<div>Select a light</div>`;
+      this.shadowRoot.innerHTML = `
+        <div style="padding:16px;border-radius:12px;background:#1c1c1e;color:#fff">
+          Select a light in the editor
+        </div>
+      `;
       return;
     }
 
@@ -39,38 +43,73 @@ class LeopardLightCard extends HTMLElement {
       state.attributes.icon ||
       "mdi:lightbulb";
 
+    const isOn = state.state === "on";
+    const supportsBrightness =
+      state.attributes.brightness !== undefined;
+
+    const pct =
+      supportsBrightness && isOn
+        ? Math.round((state.attributes.brightness / 255) * 100)
+        : 0;
+
     this.shadowRoot.innerHTML = `
       <style>
         .card {
           background:#1c1c1e;
-          color:white;
           border-radius:28px;
-          padding:16px;
-          cursor:pointer;
+          height:56px;
+          padding:0 20px;
           display:flex;
           align-items:center;
           gap:12px;
+          color:white;
+          cursor:pointer;
+          user-select:none;
+        }
+        .status {
+          font-size:12px;
+          opacity:.6;
         }
       </style>
+
       <div class="card">
         <ha-icon icon="${icon}"></ha-icon>
         <div>
           <div>${state.attributes.friendly_name}</div>
-          <div style="font-size:12px;opacity:.6">${state.state}</div>
+          <div class="status">
+            ${
+              supportsBrightness
+                ? isOn ? `${pct}%` : "Off"
+                : isOn ? "On" : "Off"
+            }
+          </div>
         </div>
       </div>
     `;
+
+    this.shadowRoot.querySelector(".card").onclick = () => {
+      this._hass.callService("light", "toggle", {
+        entity_id: this._config.entity
+      });
+    };
   }
 }
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR (THIS IS THE FIX) ===================== */
+/* ===================== EDITOR (CORRECT & STABLE) ===================== */
 
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+
+    // 🔑 CRITICAL: stop HA editor from closing dropdowns
+    this.shadowRoot.addEventListener(
+      "click",
+      (e) => e.stopPropagation(),
+      true // capture phase
+    );
   }
 
   setConfig(config) {
@@ -84,9 +123,16 @@ class LeopardLightCardEditor extends HTMLElement {
   }
 
   render() {
-    if (!this.shadowRoot || !this._hass || !this._config) return;
+    if (!this._hass || !this._config) return;
 
     this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          display:block;
+          padding:16px;
+          --mdc-menu-z-index:9999;
+        }
+      </style>
       <ha-form></ha-form>
     `;
 
@@ -128,7 +174,7 @@ customElements.define(
   LeopardLightCardEditor
 );
 
-/* ===================== REGISTER ===================== */
+/* ===================== REGISTER CARD ===================== */
 
 window.customCards = window.customCards || [];
 window.customCards.push({
