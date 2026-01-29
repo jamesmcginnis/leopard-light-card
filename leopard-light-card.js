@@ -37,12 +37,22 @@ class LeopardLightCard extends HTMLElement {
     const brightness = stateObj.attributes.brightness || 0;
     const pct = Math.round((brightness / 255) * 100);
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:lightbulb";
+    
+    // Color Logic
+    let iconColor = "white";
+    if (isOn) {
+      if (stateObj.attributes.hs_color) {
+        const [h, s] = stateObj.attributes.hs_color;
+        iconColor = `hsl(${h}, ${s}%, 50%)`;
+      } else {
+        iconColor = "#f1c40f";
+      }
+    }
 
-    // Only update innerHTML if it hasn't been created to prevent flickering during drag
     if (!this.shadowRoot.querySelector(".card")) {
       this.shadowRoot.innerHTML = `
         <style>
-          :host { --pct: 0%; }
+          :host { --pct: 0%; --rgb: 255, 255, 255; }
           .card {
             background: #1c1c1e;
             border-radius: 28px;
@@ -60,7 +70,7 @@ class LeopardLightCard extends HTMLElement {
           .slider-bar {
             position: absolute;
             top: 0; left: 0; bottom: 0;
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(var(--rgb), 0.2);
             width: var(--pct);
             transition: width 0.1s ease-out;
             pointer-events: none;
@@ -73,6 +83,7 @@ class LeopardLightCard extends HTMLElement {
             gap: 12px;
             padding: 0 20px;
             width: 100%;
+            pointer-events: none;
           }
           .icon-container {
             width: 32px;
@@ -81,12 +92,12 @@ class LeopardLightCard extends HTMLElement {
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 2;
+            z-index: 5;
+            pointer-events: auto;
           }
-          .info { display: flex; flex-direction: column; pointer-events: none; }
+          .info { display: flex; flex-direction: column; }
           .name { font-size: 14px; font-weight: 500; }
           .status { font-size: 12px; opacity: 0.6; }
-          ha-icon.on { color: #f1c40f; }
         </style>
         <div class="card">
           <div class="slider-bar"></div>
@@ -104,11 +115,18 @@ class LeopardLightCard extends HTMLElement {
       this._setupEventListeners();
     }
 
-    // Update dynamic values
     const card = this.shadowRoot.querySelector(".card");
     card.style.setProperty("--pct", `${isOn ? pct : 0}%`);
-    this.shadowRoot.querySelector("ha-icon").icon = icon;
-    this.shadowRoot.querySelector("ha-icon").className = isOn ? "on" : "";
+    
+    // Extract RGB for the bar background
+    if (stateObj.attributes.rgb_color) {
+      card.style.setProperty("--rgb", stateObj.attributes.rgb_color.join(','));
+    }
+
+    const haIcon = this.shadowRoot.querySelector("ha-icon");
+    haIcon.icon = icon;
+    haIcon.style.color = iconColor;
+    
     this.shadowRoot.querySelector(".name").textContent = stateObj.attributes.friendly_name;
     this.shadowRoot.querySelector(".status").textContent = isOn ? `${pct}%` : "Off";
   }
@@ -117,14 +135,15 @@ class LeopardLightCard extends HTMLElement {
     const card = this.shadowRoot.querySelector(".card");
     const iconBtn = this.shadowRoot.querySelector(".icon-container");
 
-    // Toggle on Icon Click
-    iconBtn.onclick = (e) => {
+    iconBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this._hass.callService("light", "toggle", { entity_id: this._config.entity });
-    };
+    });
 
-    // Slider Logic
     const handleMove = (e) => {
+      // If we are moving, cancel the long-press timer!
+      clearTimeout(this._longPressTimeout);
+      
       const rect = card.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
@@ -139,30 +158,31 @@ class LeopardLightCard extends HTMLElement {
       });
     };
 
-    const startDrag = (e) => {
-      // Long Press Logic
-      this._longPressTimeout = setTimeout(() => {
-        const event = new CustomEvent("hass-more-info", {
-          detail: { entityId: this._config.entity },
-          bubbles: true,
-          composed: true
-        });
-        this.dispatchEvent(event);
-        stopDrag();
-      }, 500);
-
-      window.addEventListener("mousemove", handleMove);
-      window.addEventListener("touchmove", handleMove);
-      window.addEventListener("mouseup", stopDrag);
-      window.addEventListener("touchend", stopDrag);
-    };
-
     const stopDrag = () => {
       clearTimeout(this._longPressTimeout);
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("touchmove", handleMove);
       window.removeEventListener("mouseup", stopDrag);
       window.removeEventListener("touchend", stopDrag);
+    };
+
+    const startDrag = (e) => {
+      if (e.target.closest('.icon-container')) return;
+
+      this._longPressTimeout = setTimeout(() => {
+        stopDrag(); 
+        const event = new CustomEvent("hass-more-info", {
+          detail: { entityId: this._config.entity },
+          bubbles: true,
+          composed: true
+        });
+        this.dispatchEvent(event);
+      }, 500);
+
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("touchmove", handleMove);
+      window.addEventListener("mouseup", stopDrag);
+      window.addEventListener("touchend", stopDrag);
     };
 
     card.addEventListener("mousedown", startDrag);
@@ -172,7 +192,7 @@ class LeopardLightCard extends HTMLElement {
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR (FIXED) ===================== */
+/* ===================== EDITOR ===================== */
 
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
@@ -218,6 +238,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "leopard-light-card",
   name: "Leopard HomeKit Light",
-  description: "HomeKit-style pill light card with brightness drag",
+  description: "HomeKit-style pill light card",
   preview: true
 });
