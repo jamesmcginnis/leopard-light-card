@@ -97,19 +97,22 @@ class LeopardLightCard extends HTMLElement {
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR (CORRECT & STABLE) ===================== */
+/* ===================== EDITOR (FINAL, STABLE FIX) ===================== */
 
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
 
-    // 🔑 CRITICAL: stop HA editor from closing dropdowns
-    this.shadowRoot.addEventListener(
-      "click",
-      (e) => e.stopPropagation(),
-      true // capture phase
-    );
+    // 🔑 CRITICAL FIX:
+    // Stop HA dashboard editor from closing selector overlays
+    ["pointerdown", "mousedown", "touchstart", "click"].forEach((event) => {
+      this.shadowRoot.addEventListener(
+        event,
+        (e) => e.stopPropagation(),
+        true // capture phase — REQUIRED
+      );
+    });
   }
 
   setConfig(config) {
@@ -174,7 +177,7 @@ customElements.define(
   LeopardLightCardEditor
 );
 
-/* ===================== REGISTER CARD ===================== */
+/* ===================== REGISTER ===================== */
 
 window.customCards = window.customCards || [];
 window.customCards.push({
