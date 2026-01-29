@@ -5,6 +5,8 @@ class LeopardLightCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._longPressTimeout = null;
+    this._lastBrightness = null;
+    this._debouncer = null;
   }
 
   static getConfigElement() {
@@ -38,7 +40,6 @@ class LeopardLightCard extends HTMLElement {
     const pct = Math.round((brightness / 255) * 100);
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:lightbulb";
     
-    // Color Logic
     let iconColor = "white";
     if (isOn) {
       if (stateObj.attributes.hs_color) {
@@ -72,7 +73,7 @@ class LeopardLightCard extends HTMLElement {
             top: 0; left: 0; bottom: 0;
             background: rgba(var(--rgb), 0.2);
             width: var(--pct);
-            transition: width 0.1s ease-out;
+            transition: width 0.05s linear; /* Faster transition for better feedback */
             pointer-events: none;
           }
           .content {
@@ -118,7 +119,6 @@ class LeopardLightCard extends HTMLElement {
     const card = this.shadowRoot.querySelector(".card");
     card.style.setProperty("--pct", `${isOn ? pct : 0}%`);
     
-    // Extract RGB for the bar background
     if (stateObj.attributes.rgb_color) {
       card.style.setProperty("--rgb", stateObj.attributes.rgb_color.join(','));
     }
@@ -141,7 +141,6 @@ class LeopardLightCard extends HTMLElement {
     });
 
     const handleMove = (e) => {
-      // If we are moving, cancel the long-press timer!
       clearTimeout(this._longPressTimeout);
       
       const rect = card.getBoundingClientRect();
@@ -150,12 +149,22 @@ class LeopardLightCard extends HTMLElement {
       const newPct = Math.round((x / rect.width) * 100);
       const newBrightness = Math.round((newPct / 100) * 255);
 
+      // Update UI immediately for responsiveness
       card.style.setProperty("--pct", `${newPct}%`);
-      
-      this._hass.callService("light", "turn_on", {
-        entity_id: this._config.entity,
-        brightness: newBrightness
-      });
+      this.shadowRoot.querySelector(".status").textContent = newPct > 0 ? `${newPct}%` : "Off";
+
+      // Debounce the Service Call
+      if (this._lastBrightness !== newBrightness) {
+        this._lastBrightness = newBrightness;
+        
+        clearTimeout(this._debouncer);
+        this._debouncer = setTimeout(() => {
+          this._hass.callService("light", "turn_on", {
+            entity_id: this._config.entity,
+            brightness: newBrightness
+          });
+        }, 50); // 50ms delay significantly reduces lag
+      }
     };
 
     const stopDrag = () => {
