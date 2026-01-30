@@ -7,6 +7,10 @@ class LeopardLightCard extends HTMLElement {
     this._longPressTimeout = null;
     this._lastBrightness = null;
     this._debouncer = null;
+    this._startX = 0;
+    this._startY = 0;
+    this._isScrolling = false;
+    this._isDragging = false;
   }
 
   static getConfigElement() {
@@ -66,14 +70,15 @@ class LeopardLightCard extends HTMLElement {
             font-family: sans-serif;
             user-select: none;
             cursor: pointer;
-            touch-action: none;
+            /* FIX: Allow vertical scrolling */
+            touch-action: pan-y;
           }
           .slider-bar {
             position: absolute;
             top: 0; left: 0; bottom: 0;
             background: rgba(var(--rgb), 0.2);
             width: var(--pct);
-            transition: width 0.05s linear; /* Faster transition for better feedback */
+            transition: width 0.05s linear;
             pointer-events: none;
           }
           .content {
@@ -141,34 +146,51 @@ class LeopardLightCard extends HTMLElement {
     });
 
     const handleMove = (e) => {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      // Detection logic: If we haven't decided if this is a drag or scroll yet
+      if (!this._isDragging && !this._isScrolling && e.touches) {
+        const dx = Math.abs(clientX - this._startX);
+        const dy = Math.abs(clientY - this._startY);
+        if (dy > dx && dy > 10) {
+          this._isScrolling = true;
+          return;
+        } else if (dx > 10) {
+          this._isDragging = true;
+        }
+      }
+
+      if (this._isScrolling) return;
+      
+      // If we reach here, it's a drag
+      if (e.cancelable) e.preventDefault();
       clearTimeout(this._longPressTimeout);
       
       const rect = card.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
       const newPct = Math.round((x / rect.width) * 100);
       const newBrightness = Math.round((newPct / 100) * 255);
 
-      // Update UI immediately for responsiveness
       card.style.setProperty("--pct", `${newPct}%`);
       this.shadowRoot.querySelector(".status").textContent = newPct > 0 ? `${newPct}%` : "Off";
 
-      // Debounce the Service Call
       if (this._lastBrightness !== newBrightness) {
         this._lastBrightness = newBrightness;
-        
         clearTimeout(this._debouncer);
         this._debouncer = setTimeout(() => {
           this._hass.callService("light", "turn_on", {
             entity_id: this._config.entity,
             brightness: newBrightness
           });
-        }, 50); // 50ms delay significantly reduces lag
+        }, 50);
       }
     };
 
     const stopDrag = () => {
       clearTimeout(this._longPressTimeout);
+      this._isDragging = false;
+      this._isScrolling = false;
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("touchmove", handleMove);
       window.removeEventListener("mouseup", stopDrag);
@@ -178,7 +200,13 @@ class LeopardLightCard extends HTMLElement {
     const startDrag = (e) => {
       if (e.target.closest('.icon-container')) return;
 
+      this._isDragging = false;
+      this._isScrolling = false;
+      this._startX = e.touches ? e.touches[0].clientX : e.clientX;
+      this._startY = e.touches ? e.touches[0].clientY : e.clientY;
+
       this._longPressTimeout = setTimeout(() => {
+        if (this._isScrolling) return;
         stopDrag(); 
         const event = new CustomEvent("hass-more-info", {
           detail: { entityId: this._config.entity },
@@ -189,20 +217,19 @@ class LeopardLightCard extends HTMLElement {
       }, 500);
 
       window.addEventListener("mousemove", handleMove);
-      window.addEventListener("touchmove", handleMove);
+      window.addEventListener("touchmove", handleMove, { passive: false });
       window.addEventListener("mouseup", stopDrag);
       window.addEventListener("touchend", stopDrag);
     };
 
     card.addEventListener("mousedown", startDrag);
-    card.addEventListener("touchstart", startDrag);
+    card.addEventListener("touchstart", startDrag, { passive: true });
   }
 }
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* ===================== EDITOR ===================== */
-
+/* Editor remains the same... */
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
     super();
