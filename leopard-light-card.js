@@ -18,7 +18,7 @@ class LeopardLightCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "", icon: "" };
+    return { entity: "", icon: "", name: "" };
   }
 
   setConfig(config) {
@@ -43,6 +43,9 @@ class LeopardLightCard extends HTMLElement {
     const brightness = stateObj.attributes.brightness || 0;
     const pct = Math.round((brightness / 255) * 100);
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:lightbulb";
+    
+    // Logic for custom name vs default entity name
+    const displayName = this._config.name || stateObj.attributes.friendly_name || this._config.entity;
     
     let iconColor = "white";
     if (isOn) {
@@ -70,7 +73,6 @@ class LeopardLightCard extends HTMLElement {
             font-family: sans-serif;
             user-select: none;
             cursor: pointer;
-            /* FIX: Allow vertical scrolling */
             touch-action: pan-y;
           }
           .slider-bar {
@@ -132,7 +134,7 @@ class LeopardLightCard extends HTMLElement {
     haIcon.icon = icon;
     haIcon.style.color = iconColor;
     
-    this.shadowRoot.querySelector(".name").textContent = stateObj.attributes.friendly_name;
+    this.shadowRoot.querySelector(".name").textContent = displayName;
     this.shadowRoot.querySelector(".status").textContent = isOn ? `${pct}%` : "Off";
   }
 
@@ -149,7 +151,6 @@ class LeopardLightCard extends HTMLElement {
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-      // Detection logic: If we haven't decided if this is a drag or scroll yet
       if (!this._isDragging && !this._isScrolling && e.touches) {
         const dx = Math.abs(clientX - this._startX);
         const dy = Math.abs(clientY - this._startY);
@@ -163,7 +164,6 @@ class LeopardLightCard extends HTMLElement {
 
       if (this._isScrolling) return;
       
-      // If we reach here, it's a drag
       if (e.cancelable) e.preventDefault();
       clearTimeout(this._longPressTimeout);
       
@@ -199,7 +199,6 @@ class LeopardLightCard extends HTMLElement {
 
     const startDrag = (e) => {
       if (e.target.closest('.icon-container')) return;
-
       this._isDragging = false;
       this._isScrolling = false;
       this._startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -229,7 +228,8 @@ class LeopardLightCard extends HTMLElement {
 
 customElements.define("leopard-light-card", LeopardLightCard);
 
-/* Editor remains the same... */
+/* ===================== EDITOR ===================== */
+
 class LeopardLightCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -250,6 +250,7 @@ class LeopardLightCardEditor extends HTMLElement {
       const form = this.querySelector("ha-form");
       form.schema = [
         { name: "entity", label: "Light", selector: { entity: { domain: "light" } } },
+        { name: "name", label: "Friendly Name (Optional)", selector: { text: {} } },
         { name: "icon", label: "Icon override", selector: { icon: {} } }
       ];
       form.addEventListener("value-changed", e => {
